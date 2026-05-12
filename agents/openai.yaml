@@ -1,0 +1,3 @@
+display_name: Remote Codex Bootstrap
+short_description: Configure SSH hosts for Codex App remote development.
+default_prompt: Bootstrap Codex App remote development from this SSH command and temporary password.
