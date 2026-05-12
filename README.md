@@ -1,48 +1,67 @@
-# Remote Codex Bootstrap
+# Remote Codex Bootstrap Skill
 
 A Codex skill for turning a fresh root Ubuntu/Debian SSH host into a Codex App remote development target.
 
-It configures reusable SSH key access, enables Codex remote connections locally, installs baseline CLI tools, installs remote Codex, verifies bubblewrap sandbox support, and configures a default Codex model provider from environment variables.
+This repository is meant to be installed as a **Codex skill**. The bundled Python script is an implementation detail that the skill runs after you give Codex an SSH command and temporary password.
 
-## Quick Start
+## Install
 
-Set your provider API key locally:
+Clone this repository into your Codex skills directory:
+
+```bash
+mkdir -p "$CODEX_HOME/skills"
+git clone https://github.com/LaiYutao/remote-codex-bootstrap-skill.git \
+  "$CODEX_HOME/skills/remote-codex-bootstrap"
+```
+
+If `CODEX_HOME` is not set, Codex commonly uses `~/.codex`:
+
+```bash
+git clone https://github.com/LaiYutao/remote-codex-bootstrap-skill.git \
+  ~/.codex/skills/remote-codex-bootstrap
+```
+
+Restart Codex if needed so it reloads available skills.
+
+## Use
+
+Set your provider API key in the environment where Codex runs:
 
 ```bash
 export CODEX_REMOTE_CC_API_KEY=...
 ```
 
-Run the bootstrap script:
+Then ask Codex to use the skill with your remote SSH command and temporary password, for example:
 
-```bash
-python3 scripts/bootstrap_remote_codex.py \
-  --ssh-command 'ssh -p 35842 root@connect.example.com' \
-  --password '<temporary password>' \
-  --create-workspace
+```text
+[$remote-codex-bootstrap] ssh -p 35842 root@connect.example.com <temporary-password> 配置一下
 ```
 
-Override provider defaults when needed:
+Codex will run the skill workflow for you. It should configure reusable SSH key access, install remote tools, install Codex, configure the default provider, and report the Codex App connection target.
 
-```bash
-python3 scripts/bootstrap_remote_codex.py \
-  --ssh-command 'ssh -p 35842 root@connect.example.com' \
-  --password '<temporary password>' \
-  --cc-provider-name custom \
-  --cc-base-url https://api.openai.com/v1 \
-  --cc-model gpt-5.5 \
-  --create-workspace
-```
+## Provider Defaults
+
+The public version uses neutral defaults:
+
+- provider name: `custom`
+- base URL: `https://api.openai.com/v1`
+- model: `gpt-5.5`
+- API key env var: `CODEX_REMOTE_CC_API_KEY`
+
+Edit `SKILL.md` or pass script arguments from the skill instructions if your environment uses a custom provider.
 
 ## Scope
 
-This skill is intentionally scoped to root Ubuntu/Debian-style remote hosts. It may refuse or fail on non-root hosts or providers that block required package installation.
+This skill is intentionally scoped to root Ubuntu/Debian-style remote hosts. It is designed for fresh disposable remote development machines where Codex can install packages as `root`.
 
-If bubblewrap namespace creation is blocked by the provider outer container, the script reports that Codex sandboxing is unavailable and continues the remaining setup.
+If bubblewrap namespace creation is blocked by the provider outer container, the workflow reports that Codex sandboxing is unavailable and continues the remaining setup.
 
 ## cc-switch Download Recovery
 
-If remote GitHub release downloads fail, the agent can download the release asset locally, copy it to the remote, then rerun with:
+If remote GitHub release downloads fail, the skill tells the agent to recover by downloading the release asset locally, copying it to the remote, and rerunning the bootstrap with:
 
 ```bash
 --skip-minimal-cli --cc-switch-archive /tmp/cc-switch-cli-linux-x64.tar.gz
 ```
+
+This recovery path lets the remaining provider setup and final checks continue smoothly.
