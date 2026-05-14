@@ -19,6 +19,9 @@ from pathlib import Path
 DEFAULT_KEY_PATH = "~/.ssh/id_ed25519_codex"
 DEFAULT_KEY_COMMENT = "codex-remote-dev-key"
 DEFAULT_CC_API_KEY_ENV = "CODEX_REMOTE_CC_API_KEY"
+DEFAULT_CC_PROVIDER_NAME_ENV = "CODEX_REMOTE_CC_PROVIDER_NAME"
+DEFAULT_CC_BASE_URL_ENV = "CODEX_REMOTE_CC_BASE_URL"
+DEFAULT_CC_MODEL_ENV = "CODEX_REMOTE_CC_MODEL"
 REMOTE_TOOLS = ("git", "rg", "python3", "node", "uv")
 CC_SWITCH_VERSION = "v5.5.0"
 CC_SWITCH_ASSET = "cc-switch-cli-linux-x64.tar.gz"
@@ -76,6 +79,31 @@ class SshTarget:
     user: str
     host: str
     port: int
+
+
+def load_env_file(path: Path | None = None) -> None:
+    env_path = path or (Path.home() / ".env")
+    if not env_path.exists():
+        return
+    for raw_line in env_path.read_text().splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        if line.startswith("export "):
+            line = line[len("export "):].lstrip()
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not key or key in os.environ:
+            continue
+        value = value.strip().strip('"').strip("'")
+        os.environ[key] = value
+
+
+def env_or_arg(value: str | None, env_name: str, label: str) -> str:
+    resolved = value or os.environ.get(env_name)
+    if not resolved:
+        raise RuntimeError(f"{label} is missing. Set {env_name} in ~/.env or the current environment, or pass the matching CLI flag.")
+    return resolved
 
 
 def run(
@@ -618,17 +646,25 @@ def main() -> int:
     parser.add_argument("--skip-minimal-cli", action="store_true", help="Skip default minimal Ubuntu CLI package installation.")
     parser.add_argument("--cc-switch-archive", help="Remote path to a pre-copied cc-switch release tarball for resumable fallback installation.")
     parser.add_argument("--create-workspace", action="store_true", help="Create the suggested remote workspace directory.")
-    parser.add_argument("--cc-provider-name", default="custom", help="cc-switch provider name.")
-    parser.add_argument("--cc-base-url", default="https://api.openai.com/v1", help="Provider base URL.")
-    parser.add_argument("--cc-model", default="gpt-5.5", help="Provider model.")
+    parser.add_argument("--cc-provider-name", help=f"cc-switch provider name. Defaults to ${DEFAULT_CC_PROVIDER_NAME_ENV}.")
+    parser.add_argument("--cc-base-url", help=f"Provider base URL. Defaults to ${DEFAULT_CC_BASE_URL_ENV}.")
+    parser.add_argument("--cc-model", help=f"Provider model. Defaults to ${DEFAULT_CC_MODEL_ENV}.")
     parser.add_argument("--cc-api-key-from-env", default=DEFAULT_CC_API_KEY_ENV, help=f"Read provider API key from this environment variable. Default: {DEFAULT_CC_API_KEY_ENV}")
     args = parser.parse_args()
+    load_env_file()
 
     target = parse_ssh_command(args.ssh_command)
     alias = args.alias or default_alias(target)
     key_path = Path(args.key_path).expanduser()
     pub_path = Path(str(key_path) + ".pub")
     workspace_root = remote_workspace_for(target.user, args.workspace_root)
+
+    provider_name = env_or_arg(args.cc_provider_name, DEFAULT_CC_PROVIDER_NAME_ENV, "cc-switch provider name")
+    base_url = env_or_arg(args.cc_base_url, DEFAULT_CC_BASE_URL_ENV, "Provider base URL")
+    model = env_or_arg(args.cc_model, DEFAULT_CC_MODEL_ENV, "Provider model")
+    api_key = None if args.skip_remote else os.environ.get(args.cc_api_key_from_env)
+    if not args.skip_remote and not api_key:
+        raise RuntimeError(f"Environment variable {args.cc_api_key_from_env} is empty or unset. Set it in ~/.env or the current environment.")
 
     ensure_key(key_path, DEFAULT_KEY_COMMENT)
     update_ssh_config(alias, target, key_path)
@@ -658,10 +694,7 @@ def main() -> int:
         sandbox_ok = verify_bubblewrap_sandbox(alias)
         ensure_remote_codex(alias, target)
         run_remote_checks(alias, workspace_root, args.create_workspace)
-        api_key = os.environ.get(args.cc_api_key_from_env)
-        if not api_key:
-            raise RuntimeError(f"Environment variable {args.cc_api_key_from_env} is empty or unset")
-        setup_cc_switch_provider(alias, args.cc_provider_name, args.cc_base_url, args.cc_model, api_key, args.cc_switch_archive)
+        setup_cc_switch_provider(alias, provider_name, base_url, model, api_key, args.cc_switch_archive)
 
     print("\nCodex App remote connection:")
     print(f"  Host alias: {alias}")

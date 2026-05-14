@@ -25,10 +25,13 @@ Restart Codex if needed so it reloads available skills.
 
 ## Use
 
-Set your provider API key in the environment where Codex runs:
+Set your provider configuration in `~/.env` or in the environment where Codex runs:
 
 ```bash
-export CODEX_REMOTE_CC_API_KEY=...
+CODEX_REMOTE_CC_PROVIDER_NAME=custom
+CODEX_REMOTE_CC_BASE_URL=https://api.openai.com/v1
+CODEX_REMOTE_CC_MODEL=gpt-5.5
+CODEX_REMOTE_CC_API_KEY=...
 ```
 
 Then ask Codex to use the skill with your remote SSH command and temporary password, for example:
@@ -39,16 +42,16 @@ Then ask Codex to use the skill with your remote SSH command and temporary passw
 
 Codex will run the skill workflow for you. It should configure reusable SSH key access, install remote tools, install Codex, configure the default provider, and report the Codex App connection target.
 
-## Provider Defaults
+## Provider Configuration
 
-The public version uses neutral defaults:
+The skill does not hardcode provider name, base URL, model, or API key. It reads them from:
 
-- provider name: `custom`
-- base URL: `https://api.openai.com/v1`
-- model: `gpt-5.5`
-- API key env var: `CODEX_REMOTE_CC_API_KEY`
+- `CODEX_REMOTE_CC_PROVIDER_NAME`
+- `CODEX_REMOTE_CC_BASE_URL`
+- `CODEX_REMOTE_CC_MODEL`
+- `CODEX_REMOTE_CC_API_KEY`
 
-Edit `SKILL.md` or pass script arguments from the skill instructions if your environment uses a custom provider.
+You can also pass `--cc-provider-name`, `--cc-base-url`, or `--cc-model` as one-off overrides, but environment variables are preferred for durable defaults.
 
 ## Scope
 

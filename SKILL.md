@@ -34,14 +34,14 @@ Defaults:
 
 - reusable key: `~/.ssh/id_ed25519_codex`
 - SSH alias: include the SSH port so repeated provider hosts remain distinguishable; for SeetaCloud-style `connect.*.seetacloud.com` hosts, default to `seetacloud-<port>` unless the user provides `--alias`
-- provider name: `custom`
-- base URL: `https://api.openai.com/v1`
-- model: `gpt-5.5`
+- provider name env var: `CODEX_REMOTE_CC_PROVIDER_NAME`
+- base URL env var: `CODEX_REMOTE_CC_BASE_URL`
+- model env var: `CODEX_REMOTE_CC_MODEL`
 - API key env var: `CODEX_REMOTE_CC_API_KEY`
 - root workspace: `/root/workspace`
 - download/network behavior: default to direct network with proxy variables unset; do not source `/etc/network_turbo` for npm/Codex installs. For GitHub release downloads, the script tries direct remote download first with a short timeout, then `/etc/network_turbo`; if both fail, the agent should take over with local `gh api` download plus `scp`, then rerun the bootstrap with `--skip-minimal-cli --cc-switch-archive /tmp/cc-switch-cli-linux-x64.tar.gz` so provider setup and final checks continue smoothly. Always unset proxy variables afterward.
 
-If `CODEX_REMOTE_CC_API_KEY` is missing, ask the user to provide it or set it for the current run. Do not silently skip provider setup, because provider setup is part of the default success criteria.
+If any provider variable is missing, ask the user to set it in `~/.env` or in the current environment. Do not silently skip provider setup, because provider setup is part of the default success criteria.
 
 Useful escape hatches:
 
@@ -51,6 +51,7 @@ Useful escape hatches:
 - `--password-from-env <VAR>` only for a short-lived password variable.
 - `--skip-minimal-cli` if apt mirrors are broken or when rerunning after the baseline CLI tools already installed.
 - `--cc-switch-archive <remote tar.gz>` after the agent has copied a cc-switch release tarball to the remote; the script installs from that archive and continues provider setup.
+- `--cc-provider-name`, `--cc-base-url`, and `--cc-model` only for one-off overrides; prefer `~/.env` for durable defaults.
 - `--skip-remote` only for local config dry-runs.
 
 ## What The Script Does
