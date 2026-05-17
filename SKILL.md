@@ -39,6 +39,7 @@ Defaults:
 - model env var: `CODEX_REMOTE_CC_MODEL`
 - API key env var: `CODEX_REMOTE_CC_API_KEY`
 - root workspace: `/root/workspace`
+- remote Codex profile: default to syncing a filtered version of local `~/.codex/AGENTS.md` to remote `~/.codex/AGENTS.md`, and generate remote-safe `~/.codex/config.toml` features plus `~/.codex/rules/default.rules`. Strip local-only dependency, GitHub/network, and email environment sections; do not copy secrets, sessions, automations, plugin caches, skills, memories, or other local state.
 - download/network behavior: default to direct network with proxy variables unset; do not source `/etc/network_turbo` for npm/Codex installs. For GitHub release downloads, the script tries direct remote download first with a short timeout, then `/etc/network_turbo`; if both fail, the agent should take over with local `gh api` download plus `scp`, then rerun the bootstrap with `--skip-minimal-cli --cc-switch-archive /tmp/cc-switch-cli-linux-x64.tar.gz` so provider setup and final checks continue smoothly. Always unset proxy variables afterward.
 
 If any provider variable is missing, ask the user to set it in `~/.env` or in the current environment. Do not silently skip provider setup, because provider setup is part of the default success criteria.
@@ -82,7 +83,13 @@ Useful escape hatches:
    - only if direct GitHub download fails, retry the tarball with `/etc/network_turbo`
    - if both remote download paths fail or time out, exit with a clear recovery message; the agent downloads the exact release asset locally through `gh api`, copies it to the remote with `scp`, then reruns with `--cc-switch-archive` to continue from the archive
    - avoid relying solely on `latest/download/install.sh`, because some remote providers return 503 for that endpoint
-11. Verify and print the Codex App target host alias and suggested remote directory.
+11. Generate the remote Codex profile:
+   - sync local `~/.codex/AGENTS.md` to remote `~/.codex/AGENTS.md` when it exists, filtering local-only sections instead of copying it verbatim
+   - strip local-only sections such as `Environment Dependency Policy`, `GitHub CLI / Network Policy`, and `Codex Automation Email Environment`
+   - extend remote `~/.codex/config.toml` with safe feature and memory toggles while preserving provider setup
+   - write remote `~/.codex/rules/default.rules` with only narrow remote-safe allow rules for `gh api`, `gh repo fork`, `gh run view`, `gh gist`, and `git add`
+   - do not copy `auth.json`, sessions, logs, automations, plugin caches, skills, memories, or other local state
+12. Verify and print the Codex App target host alias and suggested remote directory.
 
 ## Safety And Failure Rules
 
@@ -107,6 +114,8 @@ Summarize only the operational facts:
 - remote `codex` path/version
 - `bubblewrap` sandbox smoke-test result
 - cc-switch/provider configured
+- remote `AGENTS.md` sync status
+- remote Codex profile/config/rules generated
 - suggested Codex App directory
 - whether Codex App should be restarted
 - any missing optional tools

@@ -42,6 +42,13 @@ Then ask Codex to use the skill with your remote SSH command and temporary passw
 
 Codex will run the skill workflow for you. It should configure reusable SSH key access, install remote tools, install Codex, configure the default provider, and report the Codex App connection target.
 
+The workflow also prepares a minimal remote Codex profile. When a local
+`~/.codex/AGENTS.md` exists, the script syncs a filtered copy to the remote host,
+omitting local-only dependency, GitHub/network, and email-environment sections. It
+also writes remote-safe Codex feature settings and a narrow
+`~/.codex/rules/default.rules`. It does not copy secrets, sessions, logs,
+automations, plugin caches, skills, memories, or other local Codex state.
+
 ## Provider Configuration
 
 The skill does not hardcode provider name, base URL, model, or API key. It reads them from:

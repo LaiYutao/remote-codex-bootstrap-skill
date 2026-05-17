@@ -27,6 +27,17 @@ CC_SWITCH_VERSION = "v5.5.0"
 CC_SWITCH_ASSET = "cc-switch-cli-linux-x64.tar.gz"
 REMOTE_DOWNLOAD_TIMEOUT_SECONDS = 60
 CC_SWITCH_PATH_PREFIX = 'export PATH="$HOME/.local/bin:$PATH"; '
+REMOTE_DEFAULT_RULES = """prefix_rule(pattern=["gh", "api"], decision="allow")
+prefix_rule(pattern=["gh", "repo", "fork"], decision="allow")
+prefix_rule(pattern=["gh", "run", "view"], decision="allow")
+prefix_rule(pattern=["gh", "gist"], decision="allow")
+prefix_rule(pattern=["git", "add"], decision="allow")
+"""
+REMOTE_AGENTS_DROPPED_SECTIONS = {
+    "Environment Dependency Policy",
+    "GitHub CLI / Network Policy",
+    "Codex Automation Email Environment",
+}
 REMOTE_TURBO_PREFIX = (
     'if [ -f /etc/network_turbo ]; then '
     'source /etc/network_turbo >/dev/null 2>&1 || true; '
@@ -603,6 +614,16 @@ config_text = (
     'wire_api = "responses"\n'
     'requires_openai_auth = true\n'
     f'base_url = "{base_url}"\n'
+    '\n'
+    '[features]\n'
+    'memories = true\n'
+    'goals = true\n'
+    'prevent_idle_sleep = true\n'
+    '\n'
+    '[memories]\n'
+    'generate_memories = true\n'
+    'use_memories = true\n'
+    'disable_on_external_context = false\n'
 )
 config_path.write_text(config_text + "\n")
 config_path.chmod(0o600)
@@ -632,6 +653,82 @@ print(f"Model: {model}")
         raise RuntimeError(f"Remote Codex provider configuration failed:\n{result.stderr or result.stdout}")
     print("[cc-switch/default Codex provider]")
     print(result.stdout.strip())
+
+
+def setup_remote_codex_profile(alias: str) -> tuple[str, str]:
+    local_agents_path = Path.home() / ".codex" / "AGENTS.md"
+    agents_text = ""
+    if local_agents_path.exists():
+        agents_text = render_remote_agents(local_agents_path.read_text())
+
+    remote_python = r'''
+import base64
+import os
+from pathlib import Path
+
+home = Path.home()
+codex_dir = home / ".codex"
+codex_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+
+agents_b64 = os.environ.get("CODEX_REMOTE_AGENTS_B64", "")
+if agents_b64:
+    agents_text = base64.b64decode(agents_b64).decode()
+    agents_path = codex_dir / "AGENTS.md"
+    agents_path.write_text(agents_text.rstrip() + "\n")
+    agents_path.chmod(0o644)
+    print("Remote AGENTS.md: synced as filtered profile")
+else:
+    print("Remote AGENTS.md: skipped, local file missing")
+
+rules_dir = codex_dir / "rules"
+rules_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+rules_text = base64.b64decode(os.environ["CODEX_REMOTE_RULES_B64"]).decode()
+rules_path = rules_dir / "default.rules"
+rules_path.write_text(rules_text.rstrip() + "\n")
+rules_path.chmod(0o600)
+print("Remote Codex profile: config/features/rules generated")
+'''
+    remote_cmd = (
+        "CODEX_REMOTE_AGENTS_B64="
+        + shlex.quote(base64.b64encode(agents_text.encode()).decode())
+        + " CODEX_REMOTE_RULES_B64="
+        + shlex.quote(base64.b64encode(REMOTE_DEFAULT_RULES.encode()).decode())
+        + " python3 - <<'PY'\n"
+        + remote_python
+        + "PY"
+    )
+    result = ssh(alias, remote_cmd, batch=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"Remote Codex profile setup failed:\n{result.stderr or result.stdout}")
+    print("[remote Codex profile]")
+    output = result.stdout.strip()
+    print(output)
+    agents_status = "unknown"
+    profile_status = "unknown"
+    for line in output.splitlines():
+        if line.startswith("Remote AGENTS.md:"):
+            agents_status = line.removeprefix("Remote AGENTS.md:").strip()
+        elif line.startswith("Remote Codex profile:"):
+            profile_status = line.removeprefix("Remote Codex profile:").strip()
+    return agents_status, profile_status
+
+
+def render_remote_agents(local_agents_text: str) -> str:
+    lines = local_agents_text.splitlines()
+    rendered: list[str] = []
+    current_section: str | None = None
+    skipping = False
+
+    for line in lines:
+        match = re.match(r"^##\s+(.+?)\s*$", line)
+        if match:
+            current_section = match.group(1)
+            skipping = current_section in REMOTE_AGENTS_DROPPED_SECTIONS
+        if skipping:
+            continue
+        rendered.append(line)
+
+    return "\n".join(rendered).rstrip()
 
 
 def main() -> int:
@@ -669,6 +766,8 @@ def main() -> int:
     ensure_key(key_path, DEFAULT_KEY_COMMENT)
     update_ssh_config(alias, target, key_path)
     restart_needed = ensure_codex_remote_feature()
+    remote_agents_status: str | None = None
+    remote_profile_status: str | None = None
 
     if args.skip_remote:
         print("Skipped remote setup and checks.")
@@ -695,11 +794,16 @@ def main() -> int:
         ensure_remote_codex(alias, target)
         run_remote_checks(alias, workspace_root, args.create_workspace)
         setup_cc_switch_provider(alias, provider_name, base_url, model, api_key, args.cc_switch_archive)
+        remote_agents_status, remote_profile_status = setup_remote_codex_profile(alias)
 
     print("\nCodex App remote connection:")
     print(f"  Host alias: {alias}")
     print(f"  Remote target: {target.user}@{target.host}:{target.port}")
     print(f"  Suggested directory: {workspace_root}")
+    if remote_agents_status is not None:
+        print(f"  Remote AGENTS.md: {remote_agents_status}")
+    if remote_profile_status is not None:
+        print(f"  Remote Codex profile: {remote_profile_status}")
     if not args.skip_remote and not sandbox_ok:
         print("  Bubblewrap sandbox: unavailable on this provider; continuing without sandbox support.")
     if restart_needed:
